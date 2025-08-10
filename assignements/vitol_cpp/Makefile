@@ -21,6 +21,7 @@ SOURCES = main.cpp
 # Header files (for dependency tracking)
 HEADERS = types.hpp \
           math_utils.hpp \
+          curve_builder.hpp \
           pricing_models.hpp \
           monte_carlo.hpp \
           portfolio_calculator.hpp
