@@ -1,14 +1,4 @@
-// Include our modular headers
 /*
- * On inclut TOUS nos modules dans l'ordre logique :
- * types → math → curves → pricing → monte_carlo → portfolio
- */
-#include "types.hpp"              // Types de base et concepts
-#include "math_utils.hpp"         // Utilitaires mathématiques
-#include "curve_builder.hpp"      // Construction de courbes forward
-#include "pricing_models.hpp"     // Modèle Black-Scholes
-#include "monte_carlo.hpp"        // Simulations Monte Carlo
-#include "portfolio_calculator.hpp" // Calculs de risque portefeuille/*
  * main.cpp - Application principale et démonstrations
  * 
  * Ce fichier est le "chef d'orchestre" qui montre comment utiliser
@@ -455,192 +445,7 @@ void demonstrate_monte_carlo() {
  * ==================================
  * Montre l'analyse complète d'un portefeuille diversifié
  */
-/*
- * DÉMONSTRATION CONSTRUCTION DE COURBES FORWARD
- * ==============================================
- * Montre la construction et utilisation des courbes de prix forward
- * Essentiel pour le trading de commodités chez Vitol
- */
-void demonstrate_forward_curves() {
-    std::cout << "\n=== FORWARD CURVE CONSTRUCTION ===\n";
-    
-    /*
-     * CRÉATION DE COTATIONS DE MARCHÉ RÉALISTES
-     * ==========================================
-     * Simulation de quotes WTI tirées du marché réel
-     */
-    std::vector<FutureQuote> wti_quotes = {
-        {"WTI_Feb25", 0.08, 74.50, 74.45, 74.55, 12500},   // Front month (1 mois)
-        {"WTI_Mar25", 0.25, 75.20, 75.15, 75.25, 10800},   // 3 mois
-        {"WTI_Jun25", 0.50, 76.80, 76.75, 76.85, 8900},    // 6 mois
-        {"WTI_Sep25", 0.75, 77.90, 77.85, 77.95, 7200},    // 9 mois
-        {"WTI_Dec25", 1.00, 78.50, 78.45, 78.55, 6800},    // 12 mois
-        {"WTI_Dec26", 2.00, 80.20, 80.10, 80.30, 4500},    // 24 mois
-        {"WTI_Dec27", 3.00, 81.50, 81.40, 81.60, 3200}     // 36 mois
-    };
-    /*
-     * STRUCTURE TYPIQUE CONTANGO :
-     * - Prix croissants avec la maturité
-     * - Front month le moins cher (demande immédiate faible)
-     * - Long terme plus cher (stockage + financement)
-     * - Volume décroissant avec maturité (liquidité)
-     */
-    
-    /*
-     * CONSTRUCTION DE LA COURBE FORWARD
-     * =================================
-     */
-    auto wti_curve = ForwardCurveBuilder::build_from_futures("WTI", wti_quotes, InterpolationType::CUBIC_SPLINE);
-    
-    std::cout << "Built WTI forward curve with " << wti_curve.size() << " market points\n";
-    std::cout << "Curve validity: " << (wti_curve.is_valid() ? "VALID" : "INVALID") << "\n";
-    
-    /*
-     * ANALYSE DE LA STRUCTURE DE COURBE
-     * ==================================
-     */
-    const double curve_slope = wti_curve.curve_slope();
-    const double curve_convexity = wti_curve.curve_convexity();
-    
-    std::cout << "\nCurve Analytics:\n";
-    std::cout << "  Curve Slope: " << std::fixed << std::setprecision(4) << curve_slope << " $/bbl per year\n";
-    std::cout << "  Convexity: " << std::fixed << std::setprecision(6) << curve_convexity << "\n";
-    
-    /*
-     * INTERPRÉTATION MÉTIER :
-     * - Slope > 0 → Contango (stockage profitable)
-     * - Slope < 0 → Backwardation (demande immédiate forte)
-     * - Convexity → Courbure de la courbe (stress de supply/demand)
-     */
-    
-    /*
-     * INTERPOLATION SUR MATURITÉS INTERMÉDIAIRES
-     * ===========================================
-     * Test de la qualité de l'interpolation
-     */
-    std::cout << "\nForward Prices (interpolated):\n";
-    const std::vector<double> test_maturities = {0.17, 0.33, 0.67, 1.5, 2.5};
-    
-    for (double T : test_maturities) {
-        const double forward_price = wti_curve.get_forward(T);
-        std::cout << "  " << std::fixed << std::setprecision(2) << T << "Y: $" 
-                  << std::setprecision(2) << forward_price << "/bbl\n";
-    }
-    
-    /*
-     * CALCUL DE FORWARDS RATES
-     * =========================
-     * Taux forward entre différentes périodes
-     */
-    std::cout << "\nForward Rates:\n";
-    const double rate_3m_6m = wti_curve.forward_rate(0.25, 0.50);
-    const double rate_6m_12m = wti_curve.forward_rate(0.50, 1.00);
-    const double rate_1y_2y = wti_curve.forward_rate(1.00, 2.00);
-    
-    std::cout << "  3M-6M rate: " << std::fixed << std::setprecision(2) << rate_3m_6m * 100 << "%\n";
-    std::cout << "  6M-12M rate: " << std::fixed << std::setprecision(2) << rate_6m_12m * 100 << "%\n";
-    std::cout << "  1Y-2Y rate: " << std::fixed << std::setprecision(2) << rate_1y_2y * 100 << "%\n";
-    
-    /*
-     * SENSIBILITÉS DE COURBE (DV01)
-     * ==============================
-     * Impact d'un mouvement de 1bp sur chaque point de courbe
-     */
-    std::cout << "\nCurve Risk (DV01 by tenor):\n";
-    const std::vector<double> risk_tenors = {0.25, 0.50, 1.00, 2.00, 3.00};
-    const auto dv01_values = wti_curve.calculate_dv01_by_tenor(risk_tenors);
-    
-    for (size_t i = 0; i < risk_tenors.size(); ++i) {
-        std::cout << "  " << std::fixed << std::setprecision(2) << risk_tenors[i] 
-                  << "Y DV01: $" << std::setprecision(4) << dv01_values[i] << "\n";
-    }
-    
-    /*
-     * PRICING D'OPTION AVEC COURBE FORWARD
-     * =====================================
-     * Comparaison pricing spot vs courbe forward
-     */
-    std::cout << "\n--- Option Pricing Comparison ---\n";
-    
-    BlackScholesModel bs_model;
-    const double K = 77.0;        // Strike à 77$ (near ATM)
-    const double T_option = 0.75; // Option 9 mois
-    const double vol = 0.35;      // 35% volatilité
-    const double r = 0.05;        // 5% taux sans risque
-    
-    // Pricing classique (spot-based)
-    const double spot_price = 75.0; // Prix spot actuel
-    const auto spot_price_result = bs_model.price(spot_price, K, T_option, r, vol, true);
-    
-    // Pricing avec courbe (forward-based)
-    const auto curve_price_result = bs_model.price_from_curve(wti_curve, K, T_option, r, vol, true);
-    
-    if (spot_price_result.has_value() && curve_price_result.has_value()) {
-        std::cout << "Call option (K=$77, T=9M):\n";
-        std::cout << "  Spot-based pricing: $" << std::fixed << std::setprecision(4) 
-                  << spot_price_result.value() << "\n";
-        std::cout << "  Curve-based pricing: $" << std::fixed << std::setprecision(4) 
-                  << curve_price_result.value() << "\n";
-        
-        const double pricing_diff = curve_price_result.value() - spot_price_result.value();
-        std::cout << "  Difference: $" << std::fixed << std::setprecision(4) << pricing_diff 
-                  << " (" << std::setprecision(2) << (pricing_diff/spot_price_result.value())*100 << "%)\n";
-    }
-    
-    /*
-     * SENSIBILITÉS À LA COURBE
-     * =========================
-     * Impact des mouvements de courbe sur le prix de l'option
-     */
-    if (curve_price_result.has_value()) {
-        std::cout << "\nCurve Sensitivities (option):\n";
-        const auto curve_sensitivities = bs_model.calculate_curve_sensitivities(
-            wti_curve, K, T_option, r, vol, true, risk_tenors);
-        
-        for (size_t i = 0; i < risk_tenors.size(); ++i) {
-            std::cout << "  " << std::fixed << std::setprecision(2) << risk_tenors[i] 
-                      << "Y sensitivity: $" << std::setprecision(6) << curve_sensitivities[i] << "\n";
-        }
-        /*
-         * INTERPRÉTATION :
-         * - Sensibilité maximale près de la maturité de l'option (9M)
-         * - Impact décroissant pour les autres maturités
-         * - Essentiel pour hedger contre les mouvements de courbe
-         */
-    }
-    
-    /*
-     * CONSTRUCTION DE COURBE SYNTHÉTIQUE
-     * ===================================
-     * Exemple de courbe théorique avec coûts de stockage
-     */
-    std::cout << "\n--- Synthetic Curve Construction ---\n";
-    
-    const double storage_cost = 0.02;      // 2% coût de stockage annuel
-    const double convenience_yield = 0.01; // 1% convenience yield
-    const std::vector<double> synth_maturities = {0.25, 0.5, 1.0, 1.5, 2.0, 3.0};
-    
-    auto synthetic_curve = ForwardCurveBuilder::build_synthetic_curve(
-        "WTI_SYNTHETIC", spot_price, storage_cost, convenience_yield, synth_maturities);
-    
-    std::cout << "Synthetic curve vs Market curve:\n";
-    for (double T : synth_maturities) {
-        const double market_forward = wti_curve.get_forward(T);
-        const double synthetic_forward = synthetic_curve.get_forward(T);
-        const double basis = market_forward - synthetic_forward;
-        
-        std::cout << "  " << std::fixed << std::setprecision(2) << T << "Y: Market=$" 
-                  << std::setprecision(2) << market_forward 
-                  << ", Synthetic=$" << synthetic_forward
-                  << ", Basis=$" << std::setprecision(3) << basis << "\n";
-    }
-    /*
-     * UTILITÉ MÉTIER :
-     * - Basis = opportunités d'arbitrage
-     * - Courbe synthétique = prix théorique selon coûts de stockage
-     * - Écarts = inefficiences de marché à exploiter
-     */
-}
+void demonstrate_portfolio_risk() {
     std::cout << "\n=== PORTFOLIO RISK CALCULATION ===\n";
     
     /*
@@ -825,13 +630,10 @@ int main() {
         // 2. Techniques avancées : simulation Monte Carlo
         demonstrate_monte_carlo();
         
-        // 3. Nouveauté : construction de courbes forward
-        // demonstrate_forward_curves();  // TODO: Décommenter après implémentation curve_builder.hpp
-        
-        // 4. Application complète : analyse de portefeuille
+        // 3. Application complète : analyse de portefeuille
         demonstrate_portfolio_risk();
         
-        // 5. Test de performance : benchmark sur gros volume
+        // 4. Test de performance : benchmark sur gros volume
         PerformanceBenchmark::benchmark_large_portfolio();
         
         /*
@@ -852,7 +654,6 @@ int main() {
         std::cout << "✓ High-performance vectorized mathematics\n";           // Optimisations mathématiques
         std::cout << "✓ Cache-friendly data structures\n";                    // Optimisations mémoire
         std::cout << "✓ Modular design with header-only libraries\n";         // Architecture modulaire
-        std::cout << "✓ Forward curve construction and interpolation\n";      // Nouvelle fonctionnalité
         /*
          * VALEUR POUR VITOL :
          * Cette liste prouve qu'on maîtrise les dernières technologies C++
@@ -867,14 +668,11 @@ int main() {
         std::cout << "\n=== VITOL ASSIGNMENT READY ===\n";
         std::cout << "✓ Black-Scholes pricing with Greeks\n";              // Pricing de base
         std::cout << "✓ Monte Carlo VaR/ES calculation\n";                 // Risk management
-        std::cout << "✓ Forward curve construction and analytics\n";       // Nouvelles fonctionnalités
-        std::cout << "✓ Curve-based option pricing (Black-76)\n";          // Pricing avancé
         std::cout << "✓ Portfolio risk aggregation\n";                    // Vue portefeuille
         std::cout << "✓ Stress testing framework\n";                      // Tests de résistance
         std::cout << "✓ High-performance parallel computation\n";          // Performance production
         std::cout << "✓ Production-ready error handling\n";               // Robustesse
         std::cout << "✓ Comprehensive backtesting capabilities\n";         // Validation des modèles
-        std::cout << "✓ Commodity-specific features (contango/backwardation)\n"; // Spécialisation commodités
         /*
          * ARGUMENT DE VENTE POUR VITOL :
          * "Voici un système complet qui couvre TOUS vos besoins de risk management"

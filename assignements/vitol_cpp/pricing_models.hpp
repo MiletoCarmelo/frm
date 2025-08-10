@@ -16,9 +16,6 @@
 #include <string>          // Pour les clés du cache
 #include <cmath>          // Pour exp(), sqrt(), etc.
 
-// Déclaration forward pour éviter dépendance circulaire
-class ForwardCurve;
-
 // ===== MODÈLE DE PRICING BLACK-SCHOLES =====
 /*
  * Cette classe implémente le modèle Black-Scholes pour calculer :
@@ -373,117 +370,8 @@ public:
          * Avantage : un seul appel pour obtenir tous les Greeks
          * Performance : ~3x plus rapide que 4 appels séparés
          */
-    /*
-     * PRICING BASÉ SUR COURBE FORWARD (NOUVEAUTÉ)
-     * ============================================
-     * Au lieu d'utiliser un prix spot, on utilise la courbe forward
-     * Plus réaliste pour les commodités
-     */
-    [[nodiscard]] expected<double, RiskError> price_from_curve(
-        const ForwardCurve& curve,
-        double K,              // Prix d'exercice
-        double T,              // Temps jusqu'à expiration
-        double r,              // Taux sans risque
-        double vol,            // Volatilité
-        bool is_call = true    // true = Call, false = Put
-    ) const {
-        
-        // Validation des paramètres
-        if (vol <= 0) return expected<double, RiskError>{RiskError::INVALID_VOLATILITY};
-        if (T < 0) return expected<double, RiskError>{RiskError::NEGATIVE_TIME};
-        if (K <= 0) return expected<double, RiskError>{RiskError::INVALID_STRIKE};
-        
-        // Récupération du prix forward depuis la courbe
-        const double F = curve.get_forward(T);  // Prix forward à maturité T
-        if (F <= 0) return expected<double, RiskError>{RiskError::COMPUTATION_FAILED};
-        
-        // Cas spécial : expiration immédiate
-        if (T == 0) {
-            return expected<double, RiskError>{
-                is_call ? std::max(F - K, 0.0) : std::max(K - F, 0.0)
-            };
-        }
-        
-        /*
-         * MODÈLE BLACK-76 (VERSION FORWARD)
-         * ==================================
-         * Plus approprié pour commodités que Black-Scholes classique
-         * Utilise directement le prix forward au lieu de spot + carry
-         */
-        const auto [d1, d2] = FastMath::black_scholes_d1_d2(F, K, T, r, vol);
-        
-        const double price = is_call 
-            ? std::exp(-r * T) * (F * FastMath::norm_cdf(d1) - K * FastMath::norm_cdf(d2))
-            : std::exp(-r * T) * (K * FastMath::norm_cdf(-d2) - F * FastMath::norm_cdf(-d1));
-        
-        return expected<double, RiskError>{price};
-        /*
-         * DIFFÉRENCE AVEC BLACK-SCHOLES CLASSIQUE :
-         * - Utilise F (forward) au lieu de S (spot)
-         * - Discount factor exp(-rT) appliqué à tout le payoff
-         * - Plus approprié pour contrats à terme sur commodités
-         */
-    }
-    
-    /*
-     * GREEKS BASÉS SUR COURBE FORWARD
-     * ===============================
-     * Sensibilités par rapport à la courbe forward
-     */
-    [[nodiscard]] double delta_from_curve(const ForwardCurve& curve, double K, double T, double r, double vol, bool is_call = true) const {
-        if (T <= 0 || vol <= 0) {
-            const double F = curve.get_forward(T);
-            return is_call ? (F > K ? 1.0 : 0.0) : (F < K ? -1.0 : 0.0);
-        }
-        
-        const double F = curve.get_forward(T);
-        const auto [d1, d2] = FastMath::black_scholes_d1_d2(F, K, T, r, vol);
-        
-        return std::exp(-r * T) * (is_call ? FastMath::norm_cdf(d1) : FastMath::norm_cdf(d1) - 1.0);
-    }
-    
-    /*
-     * NOUVEAU : SENSIBILITÉ À LA COURBE (CURVE DELTA)
-     * ================================================
-     * Mesure l'impact d'un shift de la courbe forward sur le prix de l'option
-     */
-    [[nodiscard]] std::vector<double> calculate_curve_sensitivities(
-        const ForwardCurve& curve,
-        double K, double T, double r, double vol, bool is_call,
-        std::span<const double> bump_tenors) const {
-        
-        std::vector<double> sensitivities;
-        sensitivities.reserve(bump_tenors.size());
-        
-        // Prix de base
-        const auto base_price = price_from_curve(curve, K, T, r, vol, is_call);
-        if (!base_price.has_value()) {
-            return std::vector<double>(bump_tenors.size(), 0.0);
-        }
-        
-        // Test de choc sur chaque point de la courbe
-        for (double tenor : bump_tenors) {
-            ForwardCurve bumped_curve = curve;  // Copie
-            
-            // Shock de +1bp sur ce point de maturité
-            const double original_forward = bumped_curve.get_forward(tenor);
-            bumped_curve.add_point(tenor, original_forward * 1.0001); // +0.01%
-            
-            const auto bumped_price = price_from_curve(bumped_curve, K, T, r, vol, is_call);
-            
-            if (bumped_price.has_value()) {
-                sensitivities.push_back(bumped_price.value() - base_price.value());
-            } else {
-                sensitivities.push_back(0.0);
-            }
-        }
-        
-        return sensitivities;
     }
 };
-
-// Déclaration forward pour éviter les dépendances circulaires
-class ForwardCurve;
 
 /*
  * RÉSUMÉ DE CE FICHIER :
