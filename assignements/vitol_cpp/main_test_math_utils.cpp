@@ -44,10 +44,6 @@ public:
         return 0.5 * (1.0 + sign * y);
     }
 
-    static void norm_cdf_batch(std::span<const double> inputs, std::span<double> outputs) {
-        std::transform(inputs.begin(), inputs.end(), outputs.begin(), norm_cdf);
-    }
-
     [[nodiscard]] static double norm_pdf(double x) noexcept {
         /*
          * Fonction de densité normale (PDF)
@@ -72,6 +68,12 @@ public:
         std::transform(inputs.begin(), inputs.end(), outputs.begin(), norm_cdf);
     }
 
+    static void norm_pdf_batch(std::span<const double> inputs, std::span<double> outputs) {
+        /*
+         * Même principe que pour norm_cdf_batch
+         */
+        std::transform(inputs.begin(), inputs.end(), outputs.begin(), norm_pdf);
+    }
 
 
     [[nodiscard]] static std::pair<double, double> black_scholes_d1_d2(
