@@ -1,5 +1,5 @@
 /*
- * bootstrap_es.hpp - Bootstrap simple pour Expected Shortfall
+ * bootstrap_es.hpp - Bootstrap simple pour Expected Shortfall (VERSION CORRIGÉE)
  * 
  * VOTRE LOGIQUE EN 3 ÉTAPES :
  * 1) Calculer l'ES original
@@ -15,8 +15,17 @@
 
 struct BootstrapResult {
     double original_es;
+    double original_var;  // VaR originale pour référence
     double ci_lower_95;  // 2.5% percentile
     double ci_upper_95;  // 97.5% percentile
+    std::vector<double> bootstrap_es_values;  // Pour analyse ultérieure
+};
+
+// ===== TYPES DE BOOTSTRAP METHODS =====
+enum class BootstrapMethod {
+    CLASSIC,      // Point par point avec remise
+    BLOCK,        // Blocs de taille fixe
+    STATIONARY    // Blocs de taille variable (avancé)
 };
 
 class SimpleBootstrap {
@@ -25,12 +34,15 @@ private:
     mutable std::mt19937 rng_;
 
 public:
-    SimpleBootstrap() : rng_(std::random_device{}()) {}
+    explicit SimpleBootstrap() : rng_(std::random_device{}()) {}
     
-    BootstrapResult bootstrap_es(
+    BootstrapResult bootstrap_var_es(
+        BootstrapMethod bp_method,
         const std::vector<double>& returns, 
         double confidence = 0.95,
-        size_t n_bootstrap = 1000) {
+        size_t n_bootstrap = 1000, 
+        size_t block_size = 20  // 20 jours par défaut
+        ) {
         
         // 1) ES original
         auto [var_orig, es_orig] = mc_.calculate_var_es(returns, confidence);
@@ -40,11 +52,47 @@ public:
         std::uniform_int_distribution<size_t> dist(0, returns.size() - 1);
         
         for (size_t i = 0; i < n_bootstrap; ++i) {
-            // Ré-échantillonnage avec remise
             std::vector<double> boot_sample;
-            for (size_t j = 0; j < returns.size(); ++j) {
-                boot_sample.push_back(returns[dist(rng_)]);
-            }
+            
+            switch (bp_method) {
+                case BootstrapMethod::CLASSIC: {
+                    // Bootstrap classique : échantillonnage avec remise
+                    for (size_t j = 0; j < returns.size(); ++j) {  // CORRECTION: j au lieu de i
+                        boot_sample.push_back(returns[dist(rng_)]);
+                    }
+                    break;
+                }
+                
+                case BootstrapMethod::BLOCK: {
+                    // Bootstrap par blocs : préserve l'autocorrélation
+                    while (boot_sample.size() < returns.size()) {
+                        size_t start_index = dist(rng_);
+                        
+                        // Copie un bloc complet
+                        for (size_t k = 0; k < block_size && boot_sample.size() < returns.size(); ++k) {
+                            size_t idx = (start_index + k) % returns.size();
+                            boot_sample.push_back(returns[idx]);
+                        }
+                    }
+                    break;
+                }
+                
+                case BootstrapMethod::STATIONARY: {
+                    // Bootstrap stationnaire : blocs de longueur géométrique
+                    while (boot_sample.size() < returns.size()) {
+                        size_t start_index = dist(rng_);
+                        
+                        // Longueur géométrique (moyenne ≈ 20)
+                        size_t block_length = generate_geometric_length(0.05);  // 5% prob d'arrêt
+                        
+                        for (size_t k = 0; k < block_length && boot_sample.size() < returns.size(); ++k) {
+                            size_t idx = (start_index + k) % returns.size();
+                            boot_sample.push_back(returns[idx]);
+                        }
+                    }
+                    break;
+                }
+            }  // CORRECTION: Fermeture du switch manquait
             
             // ES sur cet échantillon
             auto [var_boot, es_boot] = mc_.calculate_var_es(boot_sample, confidence);
@@ -58,19 +106,39 @@ public:
         
         return {
             es_orig,
+            var_orig,
             bootstrap_es_values[idx_025],
-            bootstrap_es_values[idx_975]
+            bootstrap_es_values[idx_975],
+            bootstrap_es_values
         };
+    }
+
+private:
+    // Helper pour le bootstrap stationnaire
+    size_t generate_geometric_length(double p) {
+        std::uniform_real_distribution<double> uniform(0.0, 1.0);
+        size_t length = 1;
+        while (uniform(rng_) > p) {  // Continue avec proba (1-p)
+            ++length;
+        }
+        return length;
     }
 };
 
 /*
- * USAGE SIMPLE :
+ * USAGE RECOMMANDÉ POUR VITOL :
  * 
  * SimpleBootstrap bootstrap;
- * auto result = bootstrap.bootstrap_es(my_returns, 0.95, 1000);
  * 
- * std::cout << "ES: " << result.original_es * 100 << "%\n";
- * std::cout << "CI 95%: [" << result.ci_lower_95 * 100 
- *           << "%, " << result.ci_upper_95 * 100 << "%]\n";
+ * // Pour commodités (volatility clustering) → BLOCK
+ * auto result_block = bootstrap.bootstrap_var_es(
+ *     BootstrapMethod::BLOCK, wti_returns, 0.95, 1000, 20);
+ * 
+ * // Pour comparaison → CLASSIC  
+ * auto result_classic = bootstrap.bootstrap_var_es(
+ *     BootstrapMethod::CLASSIC, wti_returns, 0.95, 1000);
+ * 
+ * std::cout << "ES Block: " << result_block.original_es * 100 << "%\n";
+ * std::cout << "CI Block 95%: [" << result_block.ci_lower_95 * 100 
+ *           << "%, " << result_block.ci_upper_95 * 100 << "%]\n";
  */

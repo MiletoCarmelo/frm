@@ -246,7 +246,7 @@ void demonstrate_monte_carlo_option_pricing_convergence() {
     const double T = 0.25;     // 3 mois
     const double r = 0.05;     // Taux sans risque 5%
     const double vol = 0.40;   // Volatilité 40%
-    const size_t n_sims = 100'000;  // 100K simulations
+    const size_t n_sims = 10'000;  // 100K simulations
     const size_t n_ticks = 100;  // # of steps to simulate
 
     std::cout << "Pricing European Call: S=$" << S << ", K=$" << K
@@ -276,15 +276,15 @@ void demonstrate_monte_carlo_option_pricing_convergence() {
     std::cout << "------------|--------------|-----------|----------\n";
     
     // Extraire les données pour le plot
-    std::vector<double> horizons_double;
     std::vector<double> mc_price_double;
     std::vector<double> mc_error_pct;
+    std::vector<double> bs_price_double;
 
     
 
     for (size_t sims : sim_counts) {
         auto result = mc_pricer.calculate_option_price(
-            OptionType::EUROPEAN_CALL, S, K, T, r, vol, sims
+            OptionType::BARRIER_CALL_KNOCKOUT, S, K, T, r, vol, sims
         );
         
         if (result.has_value()) {
@@ -299,12 +299,14 @@ void demonstrate_monte_carlo_option_pricing_convergence() {
             // Stocker les résultats pour le plot
             mc_error_pct.push_back(error_pct);
             mc_price_double.push_back(mc_price);
+            bs_price_double.push_back(bs_reference);
         }
     }
 
     std::vector<std::vector<double>> mes_trajectoires;
     mes_trajectoires.push_back(mc_error_pct);
     mes_trajectoires.push_back(mc_price_double);
+    mes_trajectoires.push_back(bs_price_double);
 
     // CORRECTION 5: Plotting avec données correctes
     GnuplotPlotter plotter("./plots/");
@@ -327,7 +329,7 @@ void demonstrate_monte_carlo_option_pricing_convergence() {
 
     plotter.plot_multiple_draws(
         mes_trajectoires, 
-        {"Price ($)","Error (%)"},
+        {"Price ($)","Error (%)", "BS Price ($)"},
         "mc_draws", 
         "Monte Carlo Price Paths", 
         "Price ($)", 
