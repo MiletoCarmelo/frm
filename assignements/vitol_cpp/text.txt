@@ -1,0 +1,14 @@
+Monté-Carlo Value at Risk :
+
+1) équation math du gbm 
+2) simulation de X paths sur une timeline de t jours ("prédire" l'a var et es sur t jours) 
+3) calcul du rendement de (t_i - t_0) / t_0 pour chaque paths qui nous donne un échantillon de X rendements par jours « prévisions »
+4) distribution de chaque échantillons i et trouver var et es
+
+Monté-Carlo option pricing :
+
+on veut calculer le prix de l’option à t_maturity T onn connaît K et T .
+
+1) On simule avec Monte-Carlo un nombre X de paths: S[t] = S[t-1] * exp((mu - 0.5*sigma*sigma)*dt + sigma*sqrt(dt)*dW)
+2) Pour chaque path on calcul le playoff max(S-K,0)
+3) on calcul la moyenne des payoff et on discount pour revenir au prix de l’option au au temps présent : option_price = exp(-r * T) * moyenne(payoff)
