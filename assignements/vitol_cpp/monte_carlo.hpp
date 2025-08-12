@@ -21,6 +21,7 @@
 #include <span>         // Pour manipuler des tableaux de façon sûre (C++20)
 #include <numeric>      // Pour accumulate, reduce, etc.
 
+
 // ===== MOTEUR MONTE CARLO HAUTE PERFORMANCE =====
 /*
  * Cette classe simule l'évolution aléatoire des prix d'actifs financiers
@@ -83,7 +84,8 @@ public:
     }
     
     /*
-     * SIMULATION DE TRAJECTOIRES GÉOMÉTRIQUES BROWNIENNE (GBM)
+     * SIMULATION DE TRAJECTOIRES GÉOMÉTRIQUES BROWNIENNE (GBM) 
+     * also called log-normal random walk
      * ========================================================
      * Simule l'évolution du prix d'un actif dans le temps selon le modèle :
      * dS = μ×S×dt + σ×S×dW
@@ -234,6 +236,70 @@ public:
         }
     }
     
+
+    /*
+    * GÉNÉRATION OPTIMISÉE DES PRIX FINAUX
+    * =====================================
+    * Pour options européennes : on n'a besoin que du prix final, pas de toute la trajectoire
+    */
+    void simulate_final_prices(std::span<double> final_prices, double S0, double mu, double sigma, double T) const {
+        /*
+        * PARAMÈTRES :
+        * - final_prices : tableau pour stocker les prix finaux simulés
+        * - S0 : prix initial
+        * - mu : dérive (taux sans risque pour pricing)
+        * - sigma : volatilité annualisée
+        * - T : temps jusqu'à expiration
+        */
+        
+        /*
+        * PRÉ-CALCULS OPTIMISÉS
+        * =====================
+        * Formule fermée GBM : S(T) = S0 × exp((μ - σ²/2)×T + σ×√T×Z)
+        */
+        const double drift_term = (mu - 0.5 * sigma * sigma) * T;
+        const double vol_term = sigma * std::sqrt(T);
+        
+        /*
+        * SIMULATION DIRECTE DES PRIX FINAUX
+        * ===================================
+        * Plus efficace que simulate_gbm_paths pour options européennes
+        */
+        for (size_t i = 0; i < final_prices.size(); ++i) {
+            /*
+            * GÉNÉRATEUR LOCAL AU THREAD
+            * ===========================
+            */
+            thread_local std::normal_distribution<double> normal{0.0, 1.0};
+            auto& thread_rng = thread_rngs_[i % thread_rngs_.size()];
+            
+            /*
+            * GÉNÉRATION DU PRIX FINAL
+            * =========================
+            */
+            const double Z = normal(thread_rng);  // Variable aléatoire N(0,1)
+            final_prices[i] = S0 * std::exp(drift_term + vol_term * Z);
+            /*
+            * FORMULE GBM FERMÉE :
+            * S(T) = S0 × exp((μ - σ²/2)×T + σ×√T×Z)
+            * 
+            * AVANTAGES :
+            * - Pas de boucle sur les steps intermédiaires
+            * - Moins d'allocations mémoire
+            * - Plus rapide pour options européennes
+            */
+        }
+    }
+
+    /*
+    * VERSION AVEC VECTEUR (SURCHARGE)
+    * =================================
+    * Interface alternative qui prend un std::vector
+    */
+    void simulate_final_prices(std::vector<double>& final_prices, double S0, double mu, double sigma, double T) const {
+        simulate_final_prices(std::span<double>(final_prices), S0, mu, sigma, T);
+    }
+
     /*
      * CALCUL DE VAR ET EXPECTED SHORTFALL
      * ====================================

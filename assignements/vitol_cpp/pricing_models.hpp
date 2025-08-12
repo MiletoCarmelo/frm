@@ -75,109 +75,102 @@ public:
      * =================================================
      * C'est LE calcul central du modèle Black-Scholes
      */
-    [[nodiscard]] expected<double, RiskError> price(
-        double S,              // Prix spot de l'actif sous-jacent
-        double K,              // Prix d'exercice (strike price)
-        double T,              // Temps jusqu'à expiration (en années)
-        double r,              // Taux sans risque (risk-free rate)
-        double vol,            // Volatilité (annualisée)
-        bool is_call = true    // true = Call, false = Put
-    ) const {
-        /*
-         * expected<double, RiskError> = retourne SOIT un prix SOIT une erreur
-         * Plus sûr que de lancer des exceptions
-         */
-        
-        /*
-         * VALIDATION DES PARAMÈTRES D'ENTRÉE
-         * ===================================
-         * On vérifie que tous les paramètres ont du sens économiquement
-         */
-        if (vol <= 0) return expected<double, RiskError>{RiskError::INVALID_VOLATILITY};
-        if (T < 0) return expected<double, RiskError>{RiskError::NEGATIVE_TIME};
-        if (K <= 0 || S <= 0) return expected<double, RiskError>{RiskError::INVALID_STRIKE};
-        /*
-         * Logique métier :
-         * - Volatilité doit être positive (pas de variance négative)
-         * - Temps ne peut pas être négatif (on ne voyage pas dans le passé)
-         * - Prix et strike doivent être positifs (pas de prix négatifs)
-         */
-        
-        /*
-         * CAS SPÉCIAL : EXPIRATION IMMÉDIATE
-         * ===================================
-         * Si T = 0, l'option expire maintenant → valeur intrinsèque seulement
-         */
-        if (T == 0) {
-            return expected<double, RiskError>{
-                is_call ? std::max(S - K, 0.0) : std::max(K - S, 0.0)
-            };
+    [[nodiscard]] expected<double, RiskError> price(double S, double K, double T, double r, double vol, bool is_call = true ) const {
             /*
-             * Valeur intrinsèque :
-             * - Call : max(S-K, 0) = profit si on exerce maintenant
-             * - Put  : max(K-S, 0) = profit si on exerce maintenant
-             * 
-             * Exemple : S=110, K=100
-             * - Call vaut 10 (on peut acheter à 100 et revendre à 110)
-             * - Put vaut 0 (pas intéressant de vendre à 100 quand le marché est à 110)
-             */
-        }
-        
-        /*
-         * VÉRIFICATION DU CACHE
-         * =====================
-         * On regarde si on a déjà calculé ce prix avant
-         */
-        const auto cache_key = make_cache_key(S, K, T, r, vol);
-        if (auto it = cache_.find(cache_key); it != cache_.end()) {
-            return expected<double, RiskError>{it->second};
-        }
-        /*
-         * auto it = itérateur sur le cache
-         * cache_.find() cherche la clé
-         * it != cache_.end() = "on a trouvé quelque chose"
-         * it->second = la valeur stockée (le prix calculé précédemment)
-         */
-        
-        /*
-         * CALCUL BLACK-SCHOLES PROPREMENT DIT
-         * ====================================
-         * On utilise les formules mathématiques du modèle
-         */
-        const auto [d1, d2] = FastMath::black_scholes_d1_d2(S, K, T, r, vol);
-        /*
-         * Structured binding (C++17) : récupère d1 et d2 d'un coup
-         * d1 et d2 sont les paramètres clés du modèle Black-Scholes
-         */
-        
-        /*
-         * FORMULES DE BLACK-SCHOLES
-         * =========================
-         */
-        const double price = is_call 
-            ? S * FastMath::norm_cdf(d1) - K * std::exp(-r * T) * FastMath::norm_cdf(d2)
-            : K * std::exp(-r * T) * FastMath::norm_cdf(-d2) - S * FastMath::norm_cdf(-d1);
-        /*
-         * CALL : C = S×N(d1) - K×e^(-rT)×N(d2)
-         * PUT  : P = K×e^(-rT)×N(-d2) - S×N(-d1)
-         * 
-         * Où :
-         * - S = prix spot
-         * - K×e^(-rT) = valeur présente du strike
-         * - N(x) = fonction de répartition normale
-         * - d1, d2 = paramètres calculés par FastMath
-         * 
-         * Interprétation économique :
-         * - Premier terme : valeur espérée de l'actif si exercé
-         * - Deuxième terme : coût d'exercice actualisé
-         */
-        
-        /*
-         * STOCKAGE EN CACHE ET RETOUR
-         * ============================
-         */
-        cache_[cache_key] = price;  // Sauvegarde pour la prochaine fois
-        return expected<double, RiskError>{price};  // Retourne le résultat
+            * expected<double, RiskError> = retourne SOIT un prix SOIT une erreur
+            * Plus sûr que de lancer des exceptions
+            */
+            
+            /*
+            * VALIDATION DES PARAMÈTRES D'ENTRÉE
+            * ===================================
+            * On vérifie que tous les paramètres ont du sens économiquement
+            */
+            if (vol <= 0) return expected<double, RiskError>{RiskError::INVALID_VOLATILITY};
+            if (T < 0) return expected<double, RiskError>{RiskError::NEGATIVE_TIME};
+            if (K <= 0 || S <= 0) return expected<double, RiskError>{RiskError::INVALID_STRIKE};
+            /*
+            * Logique métier :
+            * - Volatilité doit être positive (pas de variance négative)
+            * - Temps ne peut pas être négatif (on ne voyage pas dans le passé)
+            * - Prix et strike doivent être positifs (pas de prix négatifs)
+            */
+            
+            /*
+            * CAS SPÉCIAL : EXPIRATION IMMÉDIATE
+            * ===================================
+            * Si T = 0, l'option expire maintenant → valeur intrinsèque seulement
+            */
+            if (T == 0) {
+                return expected<double, RiskError>{
+                    is_call ? std::max(S - K, 0.0) : std::max(K - S, 0.0)
+                };
+                /*
+                * Valeur intrinsèque :
+                * - Call : max(S-K, 0) = profit si on exerce maintenant
+                * - Put  : max(K-S, 0) = profit si on exerce maintenant
+                * 
+                * Exemple : S=110, K=100
+                * - Call vaut 10 (on peut acheter à 100 et revendre à 110)
+                * - Put vaut 0 (pas intéressant de vendre à 100 quand le marché est à 110)
+                */
+            }
+            
+            /*
+            * VÉRIFICATION DU CACHE
+            * =====================
+            * On regarde si on a déjà calculé ce prix avant
+            */
+            const auto cache_key = make_cache_key(S, K, T, r, vol);
+            if (auto it = cache_.find(cache_key); it != cache_.end()) {
+                return expected<double, RiskError>{it->second};
+            }
+            /*
+            * auto it = itérateur sur le cache
+            * cache_.find() cherche la clé
+            * it != cache_.end() = "on a trouvé quelque chose"
+            * it->second = la valeur stockée (le prix calculé précédemment)
+            */
+            
+            /*
+            * CALCUL BLACK-SCHOLES PROPREMENT DIT
+            * ====================================
+            * On utilise les formules mathématiques du modèle
+            */
+            const auto [d1, d2] = FastMath::black_scholes_d1_d2(S, K, T, r, vol);
+            /*
+            * Structured binding (C++17) : récupère d1 et d2 d'un coup
+            * d1 et d2 sont les paramètres clés du modèle Black-Scholes
+            */
+            
+            /*
+            * FORMULES DE BLACK-SCHOLES
+            * =========================
+            */
+            const double price = is_call 
+                ? S * FastMath::norm_cdf(d1) - K * std::exp(-r * T) * FastMath::norm_cdf(d2)
+                : K * std::exp(-r * T) * FastMath::norm_cdf(-d2) - S * FastMath::norm_cdf(-d1);
+            /*
+            * CALL : C = S×N(d1) - K×e^(-rT)×N(d2)
+            * PUT  : P = K×e^(-rT)×N(-d2) - S×N(-d1)
+            * 
+            * Où :
+            * - S = prix spot
+            * - K×e^(-rT) = valeur présente du strike
+            * - N(x) = fonction de répartition normale
+            * - d1, d2 = paramètres calculés par FastMath
+            * 
+            * Interprétation économique :
+            * - Premier terme : valeur espérée de l'actif si exercé
+            * - Deuxième terme : coût d'exercice actualisé
+            */
+            
+            /*
+            * STOCKAGE EN CACHE ET RETOUR
+            * ============================
+            */
+            cache_[cache_key] = price;  // Sauvegarde pour la prochaine fois
+            return expected<double, RiskError>{price};  // Retourne le résultat
     }
     
     /*
@@ -371,6 +364,7 @@ public:
          * Performance : ~3x plus rapide que 4 appels séparés
          */
     }
+
 };
 
 /*

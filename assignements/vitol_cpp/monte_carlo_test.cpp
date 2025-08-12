@@ -9,6 +9,8 @@
 #include <numeric>
 #include <iostream>
 
+#include "gnuplot_plotter.hpp"  // Fichier que vous venez de créer
+
 class MonteCarloEngine {
 private:
     
@@ -178,7 +180,48 @@ public:
         
         return {var, es};
     }
-    
+
+
+    /*
+    * FONCTION get_returns CORRIGÉE
+    * =============================
+    */
+    [[nodiscard]] std::vector<double> get_returns(
+        const std::vector<double>& paths, 
+        size_t k, 
+        size_t l,
+        size_t n_steps  // AJOUT : besoin de connaître la structure
+    ) const {
+        
+        const size_t path_length = n_steps + 1;
+        const size_t n_paths = paths.size() / path_length;
+        
+        std::vector<double> returns;
+        returns.reserve(n_paths);
+        
+        for (size_t path_idx = 0; path_idx < n_paths; ++path_idx) {
+            // Calcul des indices corrects
+            const size_t base_idx = path_idx * path_length;
+            const size_t price_k_idx = base_idx + k;  // Prix à l'étape k
+            const size_t price_l_idx = base_idx + l;  // Prix à l'étape l
+            
+            // Vérification de sécurité
+            if (price_l_idx >= paths.size() || l > n_steps) {
+                continue;
+            }
+            
+            const double price_k = paths[price_k_idx];
+            const double price_l = paths[price_l_idx];
+            
+            // ✅ FORMULE CORRECTE : (Prix_final - Prix_initial) / Prix_initial
+            const double return_val = (price_l - price_k) / price_k;
+            returns.push_back(return_val);
+        }
+        
+        return returns;
+    }
+
+
     /*
      * CALCUL VaR/ES POUR PLUSIEURS NIVEAUX DE CONFIANCE
      * ==================================================
@@ -214,7 +257,6 @@ public:
                 : 0.0;
 
             // crée une paire et l'ajoute au résultat
-            // plus efficace que push_back(make_pair(var, es))
             results.emplace_back(var, es);
         }
         
@@ -227,9 +269,9 @@ public:
         return thread_rngs_.size();
     }
 };
+// CORRECTIONS PRINCIPALES DANS LE MAIN()
 
 int main() {
-
     int seed = 123;
 
     std::cout << "Monte Carlo Engine Test" << std::endl;
@@ -238,20 +280,110 @@ int main() {
     std::cout << "Number of threads: " << std::thread::hardware_concurrency() << std::endl;
     std::cout << "Creating MonteCarloEngine..." << std::endl;
 
-    const size_t n_steps = 252;  // 1 an de trading (jours)
-    const size_t n_paths = 10000; // Nombre de trajectoires à simuler
+    const size_t n_steps = 252;
+    const size_t n_paths = 1000000;
+
+    const double T = 1.0;
+    const double mu = 0.05;
+    const double sigma = 0.2;
+    const double s_0 = 100.0;
+    
+    std::cout << "Simulation parameters:" << std::endl;
+    std::cout << "Dérive annuelle (mu) : " << mu * 100 << "%" << std::endl;
+    std::cout << "Volatilité annuelle (sigma) : " << sigma * 100 << "%" << std::endl;
+    std::cout << "Horizon de simulation : " << T << " an(s)" << std::endl;
+    std::cout << "Nombre de pas de temps : " << n_steps << std::endl;
+    std::cout << "Prix initial (S0) : " << s_0 << std::endl;
 
     std::cout << "Simulating " << n_paths << " paths with " << n_steps << " steps each..." << std::endl;
 
     MonteCarloEngine engine(seed);
-    // Pré-alloue un tableau pour stocker les trajectoires
-    std::vector<double> paths(n_paths * (n_steps + 1)); // Stocke les trajectoires
-    // Simule des trajectoires GBM
-    engine.simulate_gbm_paths(paths, 100.0, 0.05, 0.2, 1.0, n_steps, n_paths);
+    std::vector<double> paths(n_paths * (n_steps + 1));
+    engine.simulate_gbm_paths(paths, s_0, mu, sigma, T, n_steps, n_paths);
 
-    // Affiche les premiers prix simulés pour la première trajectoire
-    for (size_t i = 0; i <= n_steps* n_paths; i += n_steps + 1) {
-        std::cout << "etape " << i / (n_steps + 1) << ": prix initial = " << paths[i] << " - prix final = " << paths[i + n_steps] << std::endl;
+    // CORRECTION 1: Utiliser un tuple à 3 éléments au lieu de 4
+    std::vector<double> confidence_levels({0.995});
+    std::cout << "Calculating VaR and ES for confidence levels: ";
+    for (const auto& c : confidence_levels) {
+        std::cout << c * 100 << "% ";
+    }
+    std::cout << std::endl;
+
+    // CORRECTION 2: Tuple à 3 éléments : (horizon, var, es)
+    std::vector<std::tuple<int, double, double>> var_by_horizon;
+
+    const size_t k = 0;
+
+    // Calcul VaR/ES pour chaque horizon
+    for (size_t l = 1; l < n_steps; ++l) {
+        const auto step_returns = engine.get_returns(paths, k, l, n_steps);
+        const auto step_var_es_results = engine.calculate_var_es_batch(step_returns, confidence_levels);
+
+        // CORRECTION 3: Stocker seulement 3 valeurs par tuple
+        for (size_t i = 0; i < confidence_levels.size(); ++i) {
+            var_by_horizon.emplace_back(
+                static_cast<int>(l),               // horizon (int)
+                step_var_es_results[i].first,      // var (double)
+                step_var_es_results[i].second      // es (double)
+            );
+        }
+        // print des informations de progression
+        if (l % 10 == 0) {
+            std::cout << "Progress: " << l << "/" << n_steps << " horizons processed." << std::endl;
+        }
+    }
+
+    // CORRECTION 4: Structured binding avec 3 variables
+    std::cout << "\nVaR/ES Results:\n";
+    for (const auto& [l, var, es] : var_by_horizon) {
+        std::cout << "  Step " << l << ": VaR = " << std::fixed << std::setprecision(4) 
+                  << var * 100 << "%, ES = " << es * 100 << "%" << std::endl;
+    }
+
+    std::cout << "\nMonte Carlo simulation completed successfully." << std::endl;
+    std::cout << "Number of threads used: " << engine.get_thread_count() << std::endl;
+
+    // CORRECTION 5: Plotting avec données correctes
+    GnuplotPlotter plotter("./plots/");
+    
+    // Extraire les données pour le plot
+    std::vector<double> horizons_double;
+    std::vector<double> vars_percent;
+    std::vector<double> es_percent;
+    
+    for (const auto& [l, var, es] : var_by_horizon) {
+        horizons_double.push_back(static_cast<double>(l));
+        vars_percent.push_back(var * 100);  // Convertir en pourcentage
+        es_percent.push_back(es * 100);      // Convertir en pourcentage
+    }
+    
+    plotter.plot_timeseries(
+        vars_percent,
+        "var_by_horizon_corrected", 
+        "VaR 99.5% by Investment Horizon",
+        "VaR 99.5% (%)",
+        "Horizon (days)"
+    );
+
+    plotter.plot_timeseries(
+        es_percent,
+        "es_by_horizon_corrected", 
+        "ES 99.5% by Investment Horizon",
+        "ES 99.5% (%)",
+        "Horizon (days)"
+    );
+
+    // BONUS: Vérification de la tendance théorique
+    std::cout << "\n=== VÉRIFICATION THÉORIQUE ===\n";
+    if (vars_percent.size() >= 5) {
+        double var_1d = vars_percent[0];
+        double var_5d = vars_percent[4];
+        double theoretical_var_5d = var_1d * std::sqrt(5.0);
+        
+        std::cout << "VaR 1 jour: " << var_1d << "%" << std::endl;
+        std::cout << "VaR 5 jours: " << var_5d << "%" << std::endl;
+        std::cout << "VaR 5j théorique (√5 scaling): " << theoretical_var_5d << "%" << std::endl;
+        std::cout << "Ratio réel/théorique: " << var_5d / theoretical_var_5d << " (devrait être ≈ 1)" << std::endl;
     }
 
     return 0;
