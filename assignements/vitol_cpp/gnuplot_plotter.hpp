@@ -80,6 +80,116 @@ public:
         }
     }
 
+    /*
+     * PLOT MULTIPLE DRAWS (TRAJECTOIRES) MONTE CARLO
+     * ==============================================
+     * Chaque draw = une trajectoire de prix simulée
+     */
+    void plot_multiple_draws(
+        const std::vector<std::vector<double>>& draws,  // Chaque vector = une trajectoire
+        const std::vector<std::string>& labels = {},
+        const std::string& filename = "mc_draws",
+        const std::string& title = "Monte Carlo Price Paths",
+        const std::string& ylabel = "Price ($)",
+        const std::string& xlabel = "Time Steps",
+        size_t max_draws_to_plot = 10  // Limite pour lisibilité
+    ) const {
+        
+        std::cout << "Plotting " << std::min(draws.size(), max_draws_to_plot) 
+                  << " draws out of " << draws.size() << " total draws\n";
+        
+        // Sélectionner un échantillon de draws pour éviter surcharge visuelle
+        std::vector<std::vector<double>> selected_draws;
+        std::vector<std::string> draw_labels;
+        if (labels.size() == 0){
+            
+            size_t step = std::max(size_t(1), draws.size() / max_draws_to_plot);
+            
+            for (size_t i = 0; i < draws.size(); i += step) {
+                if (selected_draws.size() >= max_draws_to_plot) break;
+                
+                selected_draws.push_back(draws[i]);
+                draw_labels.push_back("Draw " + std::to_string(i + 1));
+            }
+        }
+        else {
+            selected_draws = draws;
+            draw_labels = labels;
+        }
+
+        // Utiliser la fonction multiple_timeseries existante
+        plot_multiple_timeseries(selected_draws, draw_labels, filename, title, ylabel, xlabel);
+    }
+    
+    /*
+     * PLOT DRAWS AVEC STATISTIQUES (moyenne, percentiles)
+     * ===================================================
+     */
+    void plot_draws_with_statistics(
+        const std::vector<std::vector<double>>& draws,
+        const std::vector<std::string>& labels,
+        const std::string& filename = "mc_draws_stats",
+        const std::string& title = "Monte Carlo Paths with Statistics",
+        size_t n_sample_draws = 5  // Nombre de draws individuels à afficher
+    ) const {
+        
+        if (draws.empty()) return;
+        
+        // Calculer statistiques à chaque step
+        size_t n_steps = draws[0].size();
+        std::vector<double> mean_path(n_steps);
+        std::vector<double> percentile_5(n_steps);
+        std::vector<double> percentile_95(n_steps);
+        
+        for (size_t step = 0; step < n_steps; ++step) {
+            std::vector<double> values_at_step;
+            for (const auto& draw : draws) {
+                if (step < draw.size()) {
+                    values_at_step.push_back(draw[step]);
+                }
+            }
+            
+            if (!values_at_step.empty()) {
+                std::sort(values_at_step.begin(), values_at_step.end());
+                
+                mean_path[step] = std::accumulate(values_at_step.begin(), values_at_step.end(), 0.0) / values_at_step.size();
+                
+                size_t idx_5 = static_cast<size_t>(0.05 * values_at_step.size());
+                size_t idx_95 = static_cast<size_t>(0.95 * values_at_step.size());
+                
+                percentile_5[step] = values_at_step[idx_5];
+                percentile_95[step] = values_at_step[idx_95];
+            }
+        }
+        
+        // Préparer séries pour le plot
+        std::vector<std::vector<double>> all_series;
+        std::vector<std::string> all_labels;
+        
+        // Ajouter statistiques
+        all_series.push_back(mean_path);
+        all_labels.push_back("Mean Path");
+        
+        all_series.push_back(percentile_5);
+        all_labels.push_back("5th Percentile");
+        
+        all_series.push_back(percentile_95);
+        all_labels.push_back("95th Percentile");
+        
+        // Ajouter quelques draws échantillons
+        size_t step = std::max(size_t(1), draws.size() / n_sample_draws);
+        for (size_t i = 0; i < draws.size() && all_series.size() < (3 + n_sample_draws); i += step) {
+            all_series.push_back(draws[i]);
+            if (labels.size() > 0) {
+                all_labels.push_back(labels[i]);
+            } else {
+                all_labels.push_back("Sample Path " + std::to_string(i + 1));
+            }
+        }
+        
+        plot_multiple_timeseries(all_series, all_labels, filename, title, "Price ($)", "Time Steps");
+    }
+
 private:
     
     // Sauvegarder une série

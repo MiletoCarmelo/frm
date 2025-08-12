@@ -17,6 +17,8 @@
 #include <chrono>     // Pour mesurer le temps d'exécution
 #include <random>     // Pour générer des données de test aléatoires
 
+#include "gnuplot_plotter.hpp"
+
 // Include our modular headers
 /*
  * On inclut TOUS nos modules dans l'ordre logique :
@@ -600,87 +602,6 @@ void demonstrate_portfolio_risk() {
      */
 }
 
-
-/*
- * DÉMONSTRATION DU PRICING MONTE CARLO D'UNE OPTION
- * ================================================= 
- * Montre comment utiliser Monte Carlo pour le pricing d'options
- */
-void demonstrate_monte_carlo_pricing_option(){
-    std::cout << "\n=== MONTE CARLO SIMULATION ===\n";
-    
-    MonteCarloEngine mc_engine;  // Notre moteur de simulation
-    
-    /*
-     * PARAMÈTRES DE SIMULATION
-     * ========================
-     */
-    const double S0 = 100.0;        // Prix initial
-    const double mu = 0.05;         // Dérive 5% annuelle
-    const double sigma = 0.20;      // Volatilité 20% annuelle
-    const double T = 1.0 / 252.0;   // Horizon = 1 jour de trading
-    const size_t n_sims = 100'000;  // 100,000 simulations
-    /*
-     * JUSTIFICATION n_sims = 100K :
-     * - Plus = plus précis mais plus lent
-     * - 100K = bon compromis pour VaR quotidienne
-     * - Erreur standard ∝ 1/√N → 100K donne erreur ~0.3%
-     */
-    
-    std::cout << "Simulating " << n_sims << " daily returns for S0=$" << S0 << "...\n";
-    
-    /*
-     * CRÉATION D'UN PORTEFEUILLE RÉALISTE
-     * ====================================
-     * Mix d'options calls/puts sur différents sous-jacents
-     */
-    std::vector<Position> positions = {
-        {"CALL_WTI_1", "WTI", 1'000'000, 80.0, 0.25, true},       // Long Call WTI
-        {"PUT_WTI_1", "WTI", -500'000, 70.0, 0.25, false},        // Short Put WTI
-        {"CALL_BRENT_1", "BRENT", 750'000, 85.0, 0.5, true},      // Long Call Brent
-        {"PUT_BRENT_1", "BRENT", -300'000, 75.0, 0.5, false},     // Short Put Brent
-        {"CALL_NATGAS_1", "NATGAS", 2'000'000, 4.0, 0.33, true}   // Long Call Gas
-    };
-    /*
-     * STRATÉGIE DU PORTEFEUILLE :
-     * - WTI : Bull spread (long call + short put) → position haussière
-     * - BRENT : Bull spread similaire
-     * - NATGAS : Call simple → pari sur hausse du gaz
-     * 
-     * Notionals négatifs = positions courtes (vente)
-     * Mix typique d'un desk de trading énergétique
-     */
-    
-    /*
-     * DONNÉES DE MARCHÉ ACTUELLES
-     * ============================
-     */
-    PortfolioRiskCalculator::MarketData market_data{
-        .spot_prices = {{"WTI", 75.0}, {"BRENT", 78.0}, {"NATGAS", 3.5}},
-        .volatilities = {{"WTI", 0.35}, {"BRENT", 0.33}, {"NATGAS", 0.60}},
-        .risk_free_rate = 0.05
-    };
-    /*
-     * NOTES MARCHÉ :
-     * - WTI < Strike Call (75 < 80) → Call out-of-the-money
-     * - WTI > Strike Put (75 > 70) → Put out-of-the-money
-     * - NATGAS < Strike Call (3.5 < 4.0) → Call out-of-the-money
-     * 
-     * Portfolio plutôt "hors de la monnaie" → valeur temps dominante
-     */
-
-    /*
-     * CHRONOMÉTRAGE DE LA SIMULATION
-     * ===============================
-     */
-    auto start = std::chrono::high_resolution_clock::now();
-
-    // Simulation proprement dite
-    std::vector<double> returns(n_sims);  // Pré-allocation
-    mc_engine.simulate_pricing_option(...);
-
-    ....
-}
 
 // ===== FONCTION PRINCIPALE =====
 /*

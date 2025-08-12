@@ -9,6 +9,7 @@
 #include "payoff_model.hpp"
 #include "pricing_calculator.hpp"
 #include "pricing_models.hpp"
+#include "gnuplot_plotter.hpp"
 
 /*
  * DÉMONSTRATION DU PRICING MONTE CARLO D'OPTIONS
@@ -225,11 +226,126 @@ void demonstrate_monte_carlo_option_pricing() {
 
 
 
+void demonstrate_monte_carlo_option_pricing_convergence() {
+    std::cout << "\n=== MONTE CARLO OPTION PRICING ===\n";
+    
+    /*
+     * INITIALISATION DES MOTEURS
+     * ===========================
+     */
+    PricingCalculator mc_pricer;      // Notre moteur Monte Carlo
+    BlackScholesModel bs_model;       // Pour comparaison/validation
+    
+    /*
+     * PARAMÈTRES D'OPTION STANDARD
+     * =============================
+     * Exemple classique pour démonstration
+     */
+    const double S = 100.0;    // Prix spot
+    const double K = 105.0;    // Strike (5% OTM)
+    const double T = 0.25;     // 3 mois
+    const double r = 0.05;     // Taux sans risque 5%
+    const double vol = 0.40;   // Volatilité 40%
+    const size_t n_sims = 100'000;  // 100K simulations
+    const size_t n_ticks = 100;  // # of steps to simulate
+
+    std::cout << "Pricing European Call: S=$" << S << ", K=$" << K
+              << ", T=" << T << " years, r=" << r << ", vol=" << vol << "\n";
+    std::cout << "Monte Carlo simulations: " << n_sims << "\n\n";
+    
+
+    // creation of the vector 
+    std::vector<size_t> sim_counts = {};
+    for (size_t i = 1; i <= n_sims; i += n_ticks) {
+        sim_counts.push_back(i);
+    }
+
+    /*
+     * ANALYSE DE SENSIBILITÉ AU NOMBRE DE SIMULATIONS
+     * ================================================
+     * Montre comment la précision évolue avec le nombre de simulations
+     */
+    std::cout << "\n=== CONVERGENCE vs SIMULATION COUNT ===\n";
+
+    std::cout << "Testing convergence for european call option with varying simulation counts...\n";
+
+    
+    const double bs_reference = bs_model.price(S, K, T, r, vol, true).value();
+    
+    std::cout << "Simulations |   MC Price   | Error (%) | Time (μs)\n";
+    std::cout << "------------|--------------|-----------|----------\n";
+    
+    // Extraire les données pour le plot
+    std::vector<double> horizons_double;
+    std::vector<double> mc_price_double;
+    std::vector<double> mc_error_pct;
+
+    
+
+    for (size_t sims : sim_counts) {
+        auto result = mc_pricer.calculate_option_price(
+            OptionType::EUROPEAN_CALL, S, K, T, r, vol, sims
+        );
+        
+        if (result.has_value()) {
+            const double mc_price = result.value().option_value;
+            const double error_pct = std::abs(mc_price - bs_reference) / bs_reference * 100.0;
+            
+            std::cout << std::right << std::setw(11) << sims 
+                      << " | $" << std::fixed << std::setprecision(6) << mc_price
+                      << " |   " << std::setprecision(3) << error_pct 
+                      << "   | " << std::setw(8) << result.value().calculation_time_us << "\n";
+
+            // Stocker les résultats pour le plot
+            mc_error_pct.push_back(error_pct);
+            mc_price_double.push_back(mc_price);
+        }
+    }
+
+    std::vector<std::vector<double>> mes_trajectoires;
+    mes_trajectoires.push_back(mc_error_pct);
+    mes_trajectoires.push_back(mc_price_double);
+
+    // CORRECTION 5: Plotting avec données correctes
+    GnuplotPlotter plotter("./plots/");
+    
+    plotter.plot_timeseries(
+        mc_price_double,
+        "mc_price_by_horizon",
+        "Monte Carlo Price by Investment Horizon",
+        "Monte Carlo Price ($)",
+        "Horizon (days)"
+    );
+    
+    plotter.plot_timeseries(
+        mc_error_pct,
+        "error_pct_by_horizon",
+        "Monte Carlo Price Error (%) by Investment Horizon",
+        "Error (%)",
+        "Horizon (days)"
+    );
+
+    plotter.plot_multiple_draws(
+        mes_trajectoires, 
+        {"Price ($)","Error (%)"},
+        "mc_draws", 
+        "Monte Carlo Price Paths", 
+        "Price ($)", 
+        "Time Steps"
+    );
+
+}
+
+
+
+
 int main() {
     std::cout << "=== MODERN C++ RISK ENGINE ===\n";
     std::cout << "Demonstrating C++20/23 features for option pricing\n";
     try {
         demonstrate_monte_carlo_option_pricing();
+
+        demonstrate_monte_carlo_option_pricing_convergence();
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
