@@ -11,6 +11,9 @@
 #include <ranges>             // Pour manipulation moderne des données
 #include <iostream>          // Pour affichage console
 
+// g++ -std=c++20 -Wall -Wextra -Wpedantic -O3 -march=native -DNDEBUG -I. pricing_model_2.cpp -o mai
+// ./mai
+
 class PortfolioRiskCalculator {
 private:
 
