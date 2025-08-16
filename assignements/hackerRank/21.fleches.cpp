@@ -3,140 +3,136 @@
 #include <vector>
 #include <iomanip>
 #include <map>
+
 using namespace std;
 
-
 struct Node{
-    // pointeur "next" vide (il va pointer vers le prochain élément de la liste)
+    int key;
+    int value;
     Node* next;
-    // pointeur "prev" vide (il va pointer vers l'élément précédent de la liste)
     Node* prev;
-    // clé de l'élément (identifiant unique)
-    int key; 
-    // valeur de l'élément (valeur stockée)
-    int value; 
-    // constructeur uniquement les paramètres
-    Node(int k, int val) : next(NULL), prev(NULL), key(k), value(val) {}; 
-    // constructeur avec les paramètres et les pointeurs next et prev
-    Node(Node* n, Node* p, int k, int val) : prev(p), next(n), key(k), value(val) {}; 
+    Node(int k, int v, Node* n, Node* p) : key(k), value(v), next(n), prev(p) {};
+    Node(int k, int v) : key(k), value(v), next(nullptr), prev(nullptr) {};
 };
 
-class Cache{
-
-   protected: 
-   // map pour stocker les éléments de la cache avec la clé comme identifiant
-   map<int,Node*> mp; 
-   // taille maximale de la cache
-   int cp;
-   // pointeur vers le dernier élément de la cache
-   Node* tail; 
-   // pointeur vers le premier élément de la cache 
-   Node* head; 
-   // function pour ajouter un élément à la cache
-   virtual void set(int, int) = 0;
-    // function pour obtenir un élément de la cache
-   virtual int get(int) = 0; 
-
+struct Cache{
+    protected:
+        map<int,Node*> mp;
+        size_t cp;
+        Node* head;
+        Node* tail;
+        virtual int get(int) = 0;
+        virtual void set(int,int) = 0;
 };
 
+//                         AddToHead                  RemoveNode
+//                             |     ____________________________________________
+//                             V     |                                           |
+// Situation exercide Head <-> . <-> nodeA <-> nodeB <-> nodeC <-> nodeD <-> nodeE <-> Tail
 
-// pour implementer la class LRUCache faut comprendre ce qui est demandé : 
-// on a une liste de taille fixe (cp) qui stocke les éléments tappé sur le clavier (ex A, B, C)
-// ceux si sont représenté par des noeuds de la classe Node comme ceci :
 
-// head ↔ [A] ↔ [B] ↔ [C] ↔ tail
-//      ←      ←      ←
-//   prev   prev   prev
-//      →      →      →  
-//    next   next   next
+// head <-> A  : head -> next = A et A -> prev = head
+// head <-> node <-> A 
+//         => head -> next = node 
+//         => node -> prev = head  
+//         => node -> next = head -> next
+//         => node -> prev = A -> prev;
 
-// chaque noeud a une clé (A, B, C) et une valeur (1, 2, 3) et deux pointeurs :
-// next et prev qui pointent vers le noeud suivant et le noeud précédent
-
-// quand on appuie sur une nouvelle touche on va créer un nouveau noeud et modifier les connections
-// pointeurs (prev et next) pour intégréer le nouveau à la chaine
-
-//  "least recently used" (LRU) key on keyboard 
-class LRUCache : public Cache {
+class LRUCache : public Cache{
     private:
-        void addToHead(Node* node) {
-            node->prev = head;
-            node->next = head->next;
-            head->next->prev = node;
-            head->next = node;
+        void AddToHead(Node* node){
+            node -> next = head -> next;    // |    | -> |
+            node -> prev = head;            // | <- |    | 
+            head->next->prev = node;        // |    | <- | :   car on ne sait pas (veux pas se faire chier à prendre un par un a chque
+                                            //                 fois le pointeur du noeud 1), le head reste fixe !
+            head -> next = node;            // | -> |    |
         }
-        
-        void removeNode(Node* node) {
-            node->prev->next = node->next;
-            node->next->prev = node->prev;
+        void RemoveNode(Node* node){
+            node -> prev -> next = node -> next; 
+            node -> next -> prev = node -> prev;   // | <- |   |  =  | deleted | -> + <- | 
         }
-        
-        void moveToHead(Node* node) {
-            removeNode(node);
-            addToHead(node);
+        void moveToHead(Node* node){
+            RemoveNode(node); // on enlève le noeud existant
+            AddToHead(node); // on lajouter en tete position.
+            
         }
     public:
-        LRUCache(int capacity) {
+        LRUCache(int capacity){
             cp = capacity;
-            head = new Node(0, 0);
-            tail = new Node(0, 0);
-            head->next = tail;
-            tail->prev = head;
+            head = new Node(0,0);
+            tail = new Node(0,0); 
+            head -> next = tail;
+            tail -> prev = head;
         }
-        
-        void set(int key, int value) override {
-            if (mp.find(key) != mp.end()) {
-                // Key exists, update value and move to front
-                Node* node = mp[key];
-                node->value = value;
-                moveToHead(node);
-            } else {
-                // Key doesn't exist, create new node
-                Node* newNode = new Node(key, value);
-                
-                if (mp.size() >= cp) {
-                    // Cache is full, remove least recently used (tail)
-                    Node* last = tail->prev;
-                    removeNode(last);
-                    mp.erase(last->key);
-                    delete last;
-                }
-                
-                // Add new node to head
-                addToHead(newNode);
-                mp[key] = newNode;
-            }
-        }
-        
         int get(int key) override {
-            if (mp.find(key) != mp.end()) {
-                // Key exists, move to head and return value
+            if (mp.find(key) != mp.end()){
                 Node* node = mp[key];
                 moveToHead(node);
-                return node->value;
+                return node -> value;
             }
-            return -1;  // Key not found
+            return -1;
         }
+        void set(int k, int v) override {
+            if (mp.find(k) != mp.end()){
+                Node* node = mp[k];
+                node -> value = v;
+                moveToHead(node);
+            }
+            else{
+                Node* nodeNew = new Node(k,v);
+                // D'ABORD vérifier si plein AVANT d'ajouter
+                if (mp.size() >= cp - 1){
+                    Node* last = tail -> prev;
+                    RemoveNode(last);
+                    mp.erase(last -> key);
+                    delete last;
+                } 
+                // PUIS ajouter le nouveau nœud
+                AddToHead(nodeNew);
+                mp[k] = nodeNew;
+            };
+        }
+
+        void printCache() {
+            cout << "Cache (most recent -> least recent): ";
+            Node* current = head->next;
+            while (current != tail) {
+                cout << "[" << current->key << ":" << current->value << "] ";
+                current = current->next;
+            }
+            cout << endl;
+        }
+
+
 };
 
 int main() {
-    int n, capacity, i;
-    cin >> n >> capacity;
+    int n, capacity;
+    cout << "Enter a number :" << endl;
+    cin >> n;
+    cout << "Enter a capacity:" << endl;
+    cin >> capacity;
     LRUCache l(capacity);
-    
-    for(i = 0; i < n; i++) {
-        string command;
-        cin >> command;
-        if(command == "get") {
-            int key;
+    for(int i=0; i<n;i++){
+        cout << "two command aviable : set or get. Please choose one :" << endl;
+        string command; 
+        cin>> command;
+        if(command=="set"){
+            int key,value;
+            cout << "=> Enter a key:" << endl;
             cin >> key;
-            cout << l.get(key) << endl;
+            cout << "=> Enter a value:" << endl;
+            cin >> value;
+            l.set(key,value);
         }
-        else if(command == "set") {
-            int key, value;
-            cin >> key >> value;
-            l.set(key, value);
-        }
+        else if (command=="get"){
+            int key;
+            cout << "=> Enter an existing key:" << endl;
+            cin >> key;
+            l.get(key);
+        }        
     }
+
+    l.printCache();
     return 0;
 }
