@@ -12,6 +12,8 @@ int main() {
         
         // 1. x: Tronquer et afficher en hexa lowercase
         cout << "0x" << hex << (int)x << endl;
+    
+        cout << int(x) << endl; // Afficher la valeur entière de x
         
         // 2. y: 2 décimales, signe, justifié à droite, padding avec '_', largeur 15
         cout << dec << fixed << setprecision(2) << showpos 
