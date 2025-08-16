@@ -58,29 +58,85 @@ class Cache{
 
 //  "least recently used" (LRU) key on keyboard 
 class LRUCache : public Cache {
-    private: 
-        void addToHead(Node* node){
-            // pointeur du noeud previous pointant vers le head
+    private:
+        void addToHead(Node* node) {
             node->prev = head;
-            // 
             node->next = head->next;
             head->next->prev = node;
             head->next = node;
         }
+        
         void removeNode(Node* node) {
             node->prev->next = node->next;
             node->next->prev = node->prev;
         }
+        
         void moveToHead(Node* node) {
             removeNode(node);
             addToHead(node);
         }
     public:
-        LRUCache(int c){
-            cp = c;
+        LRUCache(int capacity) {
+            cp = capacity;
             head = new Node(0, 0);
             tail = new Node(0, 0);
             head->next = tail;
             tail->prev = head;
         }
+        
+        void set(int key, int value) override {
+            if (mp.find(key) != mp.end()) {
+                // Key exists, update value and move to front
+                Node* node = mp[key];
+                node->value = value;
+                moveToHead(node);
+            } else {
+                // Key doesn't exist, create new node
+                Node* newNode = new Node(key, value);
+                
+                if (mp.size() >= cp) {
+                    // Cache is full, remove least recently used (tail)
+                    Node* last = tail->prev;
+                    removeNode(last);
+                    mp.erase(last->key);
+                    delete last;
+                }
+                
+                // Add new node to head
+                addToHead(newNode);
+                mp[key] = newNode;
+            }
+        }
+        
+        int get(int key) override {
+            if (mp.find(key) != mp.end()) {
+                // Key exists, move to head and return value
+                Node* node = mp[key];
+                moveToHead(node);
+                return node->value;
+            }
+            return -1;  // Key not found
+        }
 };
+
+int main() {
+    int n, capacity, i;
+    cin >> n >> capacity;
+    LRUCache l(capacity);
+    
+    for(i = 0; i < n; i++) {
+        string command;
+        cin >> command;
+        if(command == "get") {
+            int key;
+            cin >> key;
+            cout << l.get(key) << endl;
+        }
+        else if(command == "set") {
+            int key, value;
+            cin >> key >> value;
+            l.set(key, value);
+        }
+    }
+    return 0;
+}
