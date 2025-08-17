@@ -23,10 +23,6 @@ struct Cache{
     protected:
         map<string,option*> mp_options;
         size_t nb_op;
-        // Fonctions virtuelles pures = 0
-        virtual option get(int) = 0;
-        virtual void set(int, option*) = 0;
-        
         virtual ~Cache() = default;  // Destructeur virtuel obligatoire
 };
 
@@ -64,14 +60,24 @@ class BSM : public Cache{
                 return op->K * maths::norm_cdf(d2) - op->S * exp(-op->R*sqrt(op->T))*maths::norm_cdf(d1);
             };
         }
+        double delta_(option* op){
+            auto [d1,d2] = d1_d2_(op);
+            if(op->cp == "c"){
+                return  maths::norm_cdf(d1);
+            }
+            else {
+                return 1 - maths::norm_cdf(d1);
+            };
+        }
     public:
         BSM() {
             nb_op = 0;
             mp_options = {};
         };
+
         void add(option* op){
             string key = cache_key(op);
-            if(mp_options.find(key) != mp_options.end()){
+            if(mp_options.find(key) == mp_options.end()){
                 mp_options[key] = op;
                 nb_op += 1;
             } else {
@@ -85,14 +91,19 @@ class BSM : public Cache{
             }
         };
         void print(){
-            for(auto i : mp_options){
-                cout << i.first << " : " ;
-                cout << "S=" << i.second->S ;
-                cout << "K=" << i.second->K ;
-                cout << "R=" << i.second->R ;
-                cout << "T=" << i.second->T ;
-                cout << "V=" << i.second->V ;
-                cout << "Type=" << i.second->cp << endl ;
+            if (mp_options.size() > 0){
+                for(auto i : mp_options){
+                    cout << i.first << " : " ;
+                    cout << "S=" << i.second->S ;
+                    cout << "K=" << i.second->K ;
+                    cout << "R=" << i.second->R ;
+                    cout << "T=" << i.second->T ;
+                    cout << "V=" << i.second->V ;
+                    cout << "Type=" << i.second->cp << endl ;
+                }
+            }
+            else {
+                cout << "No options in porfolio." << endl;
             }
         }
 };
@@ -101,7 +112,7 @@ int main() {
     cout << " hello " <<endl;
     option* o1 = new option(100,103,0.2,0.03,0.1,"p");
     BSM model;
-    //model.add(o1);
-   //  model.price();
-   // model.print();
+    model.add(o1);
+    model.price();
+    model.print();
 }
